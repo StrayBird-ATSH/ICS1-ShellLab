@@ -366,8 +366,6 @@ void waitfg(pid_t pid) {
             psignal(WTERMSIG(status), sbuf);
         }
         deletejob(jobs, pid);
-        if (verbose)
-            printf("waitfg: job %d deleted\n", pid);
     }
 }
 
@@ -385,10 +383,6 @@ void waitfg(pid_t pid) {
 void sigchld_handler(int sig) {
     pid_t pid;
     int status;
-
-    if (verbose)
-        printf("sigchld_handler: entering \n");
-
     /*
      * Reap any zombie jobs.
      * The WNOHANG here is important. Without it, the
@@ -398,8 +392,7 @@ void sigchld_handler(int sig) {
      */
     while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         deletejob(jobs, pid);
-        if (verbose)
-            printf("sigchld_handler: job %d deleted\n", pid);
+        printf("sigchld_handler: job %d deleted\n", pid);
     }
 
     /*
@@ -412,9 +405,6 @@ void sigchld_handler(int sig) {
      */
     if (!((pid == 0) || (pid == -1 && errno == ECHILD)))
         unix_error("sigchld_handler wait error");
-
-    if (verbose)
-        printf("sigchld_handler: exiting\n");
 }
 
 /*
@@ -423,8 +413,11 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
-    if (verbose)
-        printf("sigint_handler: shell caught SIGINT\n");
+    pid_t pid = fgpid(jobs);
+    if (pid != 0) {
+        kill(-pid, SIGINT);
+        printf("Job [%d] (%d) terminated by signal %d\n", pid2jid(pid), pid, sig);
+    }
 }
 
 /*
@@ -433,8 +426,7 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-    if (verbose)
-        printf("sigtstp_handler: shell caught SIGTSTP\n");
+    printf("sigtstp_handler: shell caught SIGTSTP\n");
 }
 
 /*********************
