@@ -390,10 +390,10 @@ void sigchld_handler(int sig) {
      * jobs to terminate, during which time the shell would not
      * be able to accept input.
      */
-    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
+/*    while ((pid = waitpid(-1, &status, WNOHANG)) > 0) {
         deletejob(jobs, pid);
         printf("sigchld_handler: job %d deleted\n", pid);
-    }
+    }*/
 
     /*
      * Check for normal loop termination.
@@ -403,8 +403,8 @@ void sigchld_handler(int sig) {
      * (pid == -1 and errno == ECHILD) or (b) there are
      * still children left, but none of them are zombies (pid == 0).
      */
-    if (!((pid == 0) || (pid == -1 && errno == ECHILD)))
-        unix_error("sigchld_handler wait error");
+/*    if (!((pid == 0) || (pid == -1 && errno == ECHILD)))
+        unix_error("sigchld_handler wait error");*/
 }
 
 /*
