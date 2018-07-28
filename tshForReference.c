@@ -41,6 +41,9 @@ char prompt[] = "tsh> ";    /* command line prompt (DO NOT CHANGE) */
 int verbose = 0;            /* if true, print additional output */
 int nextjid = 1;            /* next job ID to allocate */
 char sbuf[MAXLINE];         /* for composing sprintf messages */
+//用于void sigchld_handler中，判断是否是当前引起停止信号的是否是前台进程，
+//这种标志的作法，借鉴了书中P546页的做法
+volatile sig_atomic_t fg_stop_or_exit;
 
 struct job_t {              /* The job struct */
     pid_t pid;              /* job PID */
@@ -57,9 +60,9 @@ struct job_t jobs[MAXJOBS]; /* The job list */
 /* Here are the functions that you will implement */
 void eval(char *cmdline);
 
-int builtin_cmd(char **argv);
+int builtin_cmd(char **argv, int argc);
 
-void do_bgfg(char **argv);
+void do_bgfg(char **argv, int argc);
 
 void waitfg(pid_t pid);
 
@@ -181,10 +184,10 @@ int main(int argc, char **argv) {
  * background children don't receive SIGINT (SIGTSTP) from the kernel
  * when we type ctrl-c (ctrl-z) at the keyboard.
 */
-void eval(char *cmdline) {
-//    TODO: eval function !!!!CHANGE!!!!
+void eval(char *cmdline)
+{
     //step 1 初始化各变量以及信号阻塞合集
-    char *argv[MAXARGS];
+    char* argv[MAXARGS];
     char buf[MAXLINE];
     int state;
     int argc;
@@ -198,18 +201,18 @@ void eval(char *cmdline) {
 
     //step 2 解析命令行，得到是否是后台命令，置位state
     strcpy(buf, cmdline);
-    state = parseline(buf, argv) ? BG : FG;
+    state = parseline(buf, argv)? BG : FG;
 
     //step 3 判断是否时内置命令
-    if (!builtin_cmd(argv)) {
+    if(!builtin_cmd(argv, argc)){
         //不是内置命令，阻塞SIGCHLD,防止子进程在父进程之间结束，也就是addjob和deletejob之间，必须保证这个拓扑顺序
         sigprocmask(SIG_BLOCK, &mask_one, &mask_prev);
-        if ((curr_pid = fork()) == 0) {
+        if((curr_pid = fork()) == 0){
             //子进程，先解除对SIGCHLD阻塞
             sigprocmask(SIG_SETMASK, &mask_prev, NULL);
             //改进进程的进程组，不要跟tsh进程在一个进程组，然后调用exevce函数执行相关的文件。
             setpgid(0, 0);
-            if (execve(argv[0], argv, environ) < 0) {
+            if(execve(argv[0], argv, environ) < 0){
                 //没找到相关可执行文件的情况下，打印消息，直接退出
                 printf("%s: Command not found.\n", argv[0]);
             }
@@ -227,18 +230,20 @@ void eval(char *cmdline) {
         //step 5 判断是否是bg,fg调用waifg函数等待前台运行完成，bg打印消息即可
         //还有一个问题是，如果在前台任务，如果我使用默认的waitpid由于该函数是linux定义的原子性函数，无法被信号中断，那么前台
         //函数在执行的过程中，无法相应SIGINT和SIGSTO信号，这里我使用sigsuspend函数加上while判断fg_stop_or_exit标志的方法。具体见waitfg函数
-        if (state == FG) {
+        if(state == FG){
             waitfg(curr_pid);
-        } else {
+        }
+        else{
             //输出后台进程的信息
             //读取全局变量，阻塞所有的信号防止被打断
-            sigprocmask(SIG_BLOCK, &mask_all, NULL);
-            struct job_t *curr_bgmask = getjobpid(jobs, curr_pid);
+            sigprocmask(SIG_BLOCK , &mask_all, NULL);
+            struct job_t* curr_bgmask = getjobpid(jobs, curr_pid);
             printf("[%d] (%d) %s", curr_bgmask->jid, curr_bgmask->pid, curr_bgmask->cmdline);
         }
         //解除所有的阻塞
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
     }
+    return;
 }
 
 /*
@@ -299,20 +304,23 @@ int parseline(const char *cmdline, char **argv) {
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.
  */
-int builtin_cmd(char **argv) {
+int builtin_cmd(char **argv, int argc)
+{
     //初始化变量以及阻塞集合
-    char *cmd = argv[0];
+    char* cmd = argv[0];
     sigset_t mask_all, mask_prev;
 
     sigfillset(&mask_all);
 
-    if (!strcmp(cmd, "quit")) {
+    if(!strcmp(cmd, "quit")){
         //直接退出，这里可以考虑更加完善些，比如如果当前任务列表中还有没运行完成的，给列表中所有的进程组，发送9信号，kill掉。
         exit(0);
-    } else if (strcmp(cmd, "fg") == 0 || strcmp(argv[0], "bg") == 0) {
-        do_bgfg(argv);
+    }
+    else if(strcmp(cmd, "fg") == 0 || strcmp(argv[0], "bg") == 0){
+        do_bgfg(argv, argc);
         return 1;
-    } else if (!strcmp(cmd, "jobs")) {
+    }
+    else if(!strcmp(cmd, "jobs")){
         //访问全局变量，需要阻塞全部信号
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         listjobs(jobs);
@@ -325,13 +333,17 @@ int builtin_cmd(char **argv) {
 /*
  * do_bgfg - Execute the builtin bg and fg commands
  */
-void do_bgfg(char **argv) {
+/*
+ * do_bgfg - Execute the builtin bg and fg commands
+ */
+void do_bgfg(char **argv, int argc)
+{
     //其实这里应该加上错误判断，比如使用输入了三个参数
-/*    if(argc != 2){
+    if(argc != 2){
         printf("%s command requires PID or %%jobid argument\n", argv[0]);
         fflush(stdout);
         return;
-    }*/
+    }
     //初始化变量
     char* cmd = argv[0];
     char* para = argv[1];
@@ -418,13 +430,14 @@ void do_bgfg(char **argv) {
 /*
  * waitfg - Block until process pid is no longer the foreground process
  */
-void waitfg(pid_t pid) {
+void waitfg(pid_t pid)
+{
     //注意到，进来之间阻塞了SIGCHLD信号
     sigset_t mask;
     sigemptyset(&mask);
     //前台进程的pid和挂起标志
     //FGPID = 0;
-    int fg_stop_or_exit = 0;
+    fg_stop_or_exit = 0;
     //让SIGCHLD信号处理程序处理任何子进程传回来的SIGCHLD信号，注意子进程挂起或者终止都会返回这个信号，所以信号处理程序需要区分，处理不同的情况
     //只有发出这个信号的子进程是前台进程才设置fg_stop_or_exit标志。
     while(!fg_stop_or_exit){
@@ -448,28 +461,27 @@ void sigchld_handler(int sig) {
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
     pid_t gc_pid;
-    struct job_t* gc_job;
+    struct job_t *gc_job;
     int status;
 
     sigfillset(&mask_all);
     //尽可能的回收子进程,同时使用WNOHANG选项使得如果当前进程都没有终止时，直接返回，而不是挂起该回收进程。这样可能会阻碍无法两个短时间结束的后台进程
     //即trace05.txt
-    while((gc_pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0){
+    while ((gc_pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         gc_job = getjobpid(jobs, gc_pid);
-        if(gc_pid == fgpid(jobs)){
-            int fg_stop_or_exit = 1;
+        if (gc_pid == fgpid(jobs)) {
+            fg_stop_or_exit = 1;
         }
-        if(WIFSTOPPED(status)){
+        if (WIFSTOPPED(status)) {
             //子进程停止引起的waitpid函数返回,再判断该进程是否是前台进程
             //struct job_t* stop_job = getjobpid(jobs, gc_pid);
             gc_job->state = ST;
             printf("Job [%d] (%d) terminated by signal %d\n", gc_job->jid, gc_job->pid, WSTOPSIG(status));
-        }
-        else{
+        } else {
             //子进程终止引起的返回,判断是否是前台进程
             //并且判断该信号是否是未捕获的信号
-            if(WIFSIGNALED(status)){
+            if (WIFSIGNALED(status)) {
                 //struct job_t* gc_job = getjobpid(jobs, gc_pid);
                 printf("Job [%d] (%d) terminated by signal %d\n", gc_job->jid, gc_job->pid, WTERMSIG(status));
             }
@@ -480,15 +492,14 @@ void sigchld_handler(int sig) {
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
     }
     errno = olderrno;
-    return;
 }
-
 /*
  * sigint_handler - The kernel sends a SIGINT to the shell whenver the
  *    user types ctrl-c at the keyboard.  Catch it and send it along
  *    to the foreground job.
  */
-void sigint_handler(int sig) {
+void sigint_handler(int sig)
+{
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
     pid_t curr_fg_pid;
@@ -512,7 +523,8 @@ void sigint_handler(int sig) {
  *     the user types ctrl-z at the keyboard. Catch it and suspend the
  *     foreground job by sending it a SIGTSTP.
  */
-void sigtstp_handler(int sig) {
+void sigtstp_handler(int sig)
+{
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
     pid_t curr_fg_pid;

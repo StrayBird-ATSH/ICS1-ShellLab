@@ -3,4 +3,4 @@ project(Jul26 C)
 
 set(CMAKE_C_STANDARD 99)
 
-add_executable(Jul26 tshForReference.c originalTSH.c tsh.c)
+add_executable(Jul26 tsh.c)

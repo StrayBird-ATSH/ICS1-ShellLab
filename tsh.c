@@ -182,31 +182,32 @@ int main(int argc, char **argv) {
  * when we type ctrl-c (ctrl-z) at the keyboard.
 */
 void eval(char *cmdline) {
-    char *argv[MAXARGS]; /* Argument list execve() */
-    char buf[MAXLINE];   /* Holds modified command line */
-    int bg;              /* Should the job run in bg or fg? */
-    pid_t pid;           /* Process id */
+    char *argv[MAXARGS]; /* argv for execve() */
+    int bg;              /* should the job run in bg or fg? */
+    pid_t pid;           /* process id */
 
-    strcpy(buf, cmdline);
-    bg = parseline(buf, argv);
+    /* parse command line */
+    bg = parseline(cmdline, argv);
     if (argv[0] == NULL)
-        return;   /* Ignore empty lines */
+        return;   /* ignore empty lines */
+    if (!strcmp(argv[0], "quit"))
+        exit(0);  /* terminate shell */
 
     if (!builtin_cmd(argv)) {
         if ((pid = fork()) == 0) {   /* Child runs user job */
             if (execve(argv[0], argv, environ) < 0) {
                 printf("%s: Command not found.\n", argv[0]);
+                fflush(stdout);
                 exit(0);
             }
         }
 
-        /* Parent waits for foreground job to terminate */
-        if (!bg) {
-            int status;
-            if (waitpid(pid, &status, 0) < 0)
-                unix_error("waitfg: waitpid error");
-        } else
-            printf("%d %s", pid, cmdline);
+        /* parent waits for foreground job to terminate or stop */
+        addjob(jobs, pid, (bg == 1 ? BG : FG), cmdline);
+        if (!bg)
+            waitfg(pid);
+        else
+            printf("[%d] (%d) %s", pid2jid(pid), pid, cmdline);
     }
 }
 
@@ -264,6 +265,20 @@ int parseline(const char *cmdline, char **argv) {
     return bg;
 }
 
+/* updatejob - update the state of a job with PID=pid */
+int updatejob(struct job_t *jobs, pid_t pid, int state) {
+    int i;
+
+    for (i = 0; i < MAXJOBS; i++) {
+        if (jobs[i].pid == pid) {
+            jobs[i].state = state;
+            return 1;
+        }
+    }
+    printf("Job %d not found\n", pid);
+    return 0;
+}
+
 /*
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.
@@ -296,21 +311,6 @@ int builtin_cmd(char **argv) {
     return 0;
 }
 
-/* updatejob - update the state of a job with PID=pid
- * TODO this is not a wanted function in the final result. */
-int updatejob(struct job_t *jobs, pid_t pid, int state) {
-    int i;
-
-    for (i = 0; i < MAXJOBS; i++) {
-        if (jobs[i].pid == pid) {
-            jobs[i].state = state;
-            return 1;
-        }
-    }
-    printf("Job %d not found\n", pid);
-    return 0;
-}
-
 /*
  * do_bgfg - Execute the builtin bg and fg commands
  */
@@ -330,7 +330,7 @@ void do_bgfg(char **argv) {
         if (!strcmp(cmd, "bg")) {
             kill(pid, SIGCONT);
             updatejob(jobs, pid, BG);
-            printf("%d %s", pid, jobs->cmdline);
+            printf("[%d] (%d) %s", jobs->jid, jobs->pid, jobs->cmdline);
         }
         if (!strcmp(cmd, "fg")) {
             kill(pid, SIGCONT);
@@ -345,7 +345,6 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
-
     int status;
 
     /* wait for FG job to stop (WUNTRACED) or terminate */
@@ -376,7 +375,7 @@ void waitfg(pid_t pid) {
  * Signal handlers
  *****************/
 
-/*
+/* 
  * sigchld_handler - The kernel sends a SIGCHLD to the shell whenever
  *     a child job terminates (becomes a zombie), or stops because it
  *     received a SIGSTOP or SIGTSTP signal. The handler reaps all
