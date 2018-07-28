@@ -265,20 +265,6 @@ int parseline(const char *cmdline, char **argv) {
     return bg;
 }
 
-/* updatejob - update the state of a job with PID=pid */
-int updatejob(struct job_t *jobs, pid_t pid, int state) {
-    int i;
-
-    for (i = 0; i < MAXJOBS; i++) {
-        if (jobs[i].pid == pid) {
-            jobs[i].state = state;
-            return 1;
-        }
-    }
-    printf("Job %d not found\n", pid);
-    return 0;
-}
-
 /*
  * builtin_cmd - If the user has typed a built-in command then execute
  *    it immediately.
@@ -329,12 +315,12 @@ void do_bgfg(char **argv) {
     if ((jobp = getjobpid(jobs, pid)) != NULL) {
         if (!strcmp(cmd, "bg")) {
             kill(pid, SIGCONT);
-            updatejob(jobs, pid, BG);
+            getjobpid(jobs, pid)->state = BG;
             printf("[%d] (%d) %s", jobs->jid, jobs->pid, jobs->cmdline);
         }
         if (!strcmp(cmd, "fg")) {
             kill(pid, SIGCONT);
-            updatejob(jobs, pid, FG);
+            getjobpid(jobs, pid)->state = BG;
             waitfg(pid);
         }
     } else
@@ -351,15 +337,8 @@ void waitfg(pid_t pid) {
     if (waitpid(pid, &status, WUNTRACED) < 0)
         unix_error("waitfg: waitpid error");
 
-    /* FG job has stopped. Change its state in jobs list */
-    if (WIFSTOPPED(status)) {
-        sprintf(sbuf, "Job %d stopped by signal", pid);
-        psignal(WSTOPSIG(status), sbuf);
-        updatejob(jobs, pid, ST);
-    }
-
-        /* FG job has terminated. Remove it from job list */
-    else {
+    /* FG job has terminated. Remove it from job list */
+    if (getjobpid(jobs, pid)->state != ST) {
         /* check if job was terminated by an uncaught signal */
         if (WIFSIGNALED(status)) {
             sprintf(sbuf, "Job %d terminated by signal", pid);
@@ -426,7 +405,12 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
-    printf("sigtstp_handler: shell caught SIGTSTP\n");
+    pid_t pid = fgpid(jobs);
+    if (pid != 0) {
+        kill(-pid, SIGTSTP);
+        printf("Job [%d] (%d) stopped by signal %d\n", pid2jid(pid), pid, sig);
+        getjobpid(jobs, pid)->state = ST;
+    }
 }
 
 /*********************
