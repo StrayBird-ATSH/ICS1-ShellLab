@@ -333,7 +333,7 @@ void do_bgfg(char **argv) {
             requestedJob->state = BG;
             printf("[%d] (%d) %s", requestedJob->jid, requestedJob->pid, requestedJob->cmdline);
         } else {
-            kill(pid, SIGCONT);
+            kill(-pid, SIGCONT);
             getjobpid(jobs, pid)->state = FG;
             waitfg(pid);
         }
@@ -346,13 +346,15 @@ void do_bgfg(char **argv) {
  */
 void waitfg(pid_t pid) {
     int status;
+    struct job_t *requestedJob = getjobpid(jobs, pid);
 
     /* wait for FG job to stop (WUNTRACED) or terminate */
-    if (waitpid(pid, &status, WUNTRACED) < 0)
+    if (waitpid(pid, &status, WUNTRACED) < 0 && getpgid(pid) > 0) {
         unix_error("waitfg: waitpid error");
+    }
 
     /* FG job has terminated. Remove it from job list */
-    if (getjobpid(jobs, pid)->state != ST) {
+    if (requestedJob->state != ST) {
         /* check if job was terminated by an uncaught signal */
         if (WIFSIGNALED(status)) {
             sprintf(sbuf, "Job %d terminated by signal", pid);
