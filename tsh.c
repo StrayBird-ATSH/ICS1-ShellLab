@@ -304,41 +304,71 @@ void do_bgfg(char **argv) {
     int pid, jid;
     struct job_t *requestedJob;
     char *cmd = argv[0];
-
-    /* ignore command if no argument */
-    if (argv[1] == NULL) {
-        printf("command requires PID or %%jobid argument\n");
-        return;
-    }
-    if (argv[1][0] == '%') {
-        jid = (int) strtol(&(argv[1][1]), NULL, 10);
-        if (jid == 0) {
-            printf("argument must be a PID or %%jobid\n");
-            fflush(stdout);
+    if (!strcmp(cmd, "bg")) {
+        /* ignore command if no argument */
+        if (argv[1] == NULL) {
+            printf("bg command requires PID or %%jobid argument\n");
             return;
         }
-        pid = getjobjid(jobs, jid)->pid;
-    } else {
-        pid = (int) strtol(argv[1], NULL, 10);
-        if (pid == 0) {
-            printf("argument must be a PID or %%jobid\n");
-            fflush(stdout);
-            return;
+        if (argv[1][0] == '%') {
+            jid = (int) strtol(&(argv[1][1]), NULL, 10);
+            if (jid == 0) {
+                printf("bg: argument must be a PID or %%jobid\n");
+                fflush(stdout);
+                return;
+            }
+            if (getjobjid(jobs, jid) == NULL) {
+                printf("%%%d: No such job\n", jid);
+                return;
+            }
+            pid = getjobjid(jobs, jid)->pid;
+        } else {
+            pid = (int) strtol(argv[1], NULL, 10);
+            if (pid == 0) {
+                printf("bg: argument must be a PID or %%jobid\n");
+                fflush(stdout);
+                return;
+            }
         }
-    }
-
-    if ((requestedJob = getjobpid(jobs, pid)) != NULL) {
-        if (!strcmp(cmd, "bg")) {
+        if ((requestedJob = getjobpid(jobs, pid)) != NULL) {
             kill(pid, SIGCONT);
             requestedJob->state = BG;
             printf("[%d] (%d) %s", requestedJob->jid, requestedJob->pid, requestedJob->cmdline);
-        } else {
-            kill(-pid, SIGCONT);
-            getjobpid(jobs, pid)->state = FG;
-            waitfg(pid);
+        } else
+            printf("(%d): No such process\n", pid);
+    } else {
+        /* ignore command if no argument */
+        if (argv[1] == NULL) {
+            printf("fg command requires PID or %%jobid argument\n");
+            return;
         }
-    } else
-        printf("No such process\n");
+        if (argv[1][0] == '%') {
+            jid = (int) strtol(&(argv[1][1]), NULL, 10);
+            if (jid == 0) {
+                printf("fg: argument must be a PID or %%jobid\n");
+                fflush(stdout);
+                return;
+            }
+            if (getjobjid(jobs, jid) == NULL) {
+                printf("%%%d: No such job\n", jid);
+                return;
+            }
+            pid = getjobjid(jobs, jid)->pid;
+        } else {
+            pid = (int) strtol(argv[1], NULL, 10);
+            if (pid == 0) {
+                printf("fg: argument must be a PID or %%jobid\n");
+                fflush(stdout);
+                return;
+            }
+        }
+        if ((requestedJob = getjobpid(jobs, pid)) != NULL) {
+            kill(-pid, SIGCONT);
+            requestedJob->state = FG;
+            waitfg(pid);
+        } else
+            printf("(%d): No such process\n", pid);
+    }
 }
 
 /*
