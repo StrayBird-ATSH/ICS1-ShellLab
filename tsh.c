@@ -301,7 +301,7 @@ int builtin_cmd(char **argv) {
  * do_bgfg - Execute the builtin bg and fg commands
  */
 void do_bgfg(char **argv) {
-    int pid;
+    int pid = 0, jid;
     struct job_t *jobp;
     char *cmd = argv[0];
 
@@ -310,17 +310,35 @@ void do_bgfg(char **argv) {
         printf("%s command needs PID argument\n", cmd);
         return;
     }
-    pid = atoi(argv[1]);
+    if (argv[1][0] == '%') {
+        jid = atoi(&(argv[1][1]));
+        //错误处理2，如果传入的参数不是规定的格式，报错返回
+        if (jid == 0) {
+            printf("%s:argument must be a PID or %%jobid\n", cmd);
+            fflush(stdout);
+            return;
+        }
+        pid = getjobjid(jobs, jid)->pid;
+    } else {
+        pid = atoi(argv[1]);
+        if (pid == 0) {
+            printf("%s:argument must be a PID or %%jobid\n", cmd);
+            fflush(stdout);
+            return;
+        }
+        jid = pid2jid(pid);
+    }
+//    pid = (int) strtol(argv[1], NULL, 10);
 
     if ((jobp = getjobpid(jobs, pid)) != NULL) {
         if (!strcmp(cmd, "bg")) {
             kill(pid, SIGCONT);
-            getjobpid(jobs, pid)->state = BG;
-            printf("[%d] (%d) %s", jobs->jid, jobs->pid, jobs->cmdline);
+            jobp->state = BG;
+            printf("[%d] (%d) %s", jobp->jid, jobp->pid, jobp->cmdline);
         }
         if (!strcmp(cmd, "fg")) {
             kill(pid, SIGCONT);
-            getjobpid(jobs, pid)->state = BG;
+            getjobpid(jobs, pid)->state = FG;
             waitfg(pid);
         }
     } else
