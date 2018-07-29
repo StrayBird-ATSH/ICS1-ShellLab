@@ -307,13 +307,13 @@ void do_bgfg(char **argv) {
 
     /* ignore command if no argument */
     if (argv[1] == NULL) {
-        printf("%s command needs PID argument\n", cmd);
+        printf("command requires PID or %%jobid argument\n");
         return;
     }
     if (argv[1][0] == '%') {
         jid = (int) strtol(&(argv[1][1]), NULL, 10);
         if (jid == 0) {
-            printf("%s:argument must be a PID or %%jobid\n", cmd);
+            printf("argument must be a PID or %%jobid\n");
             fflush(stdout);
             return;
         }
@@ -321,7 +321,7 @@ void do_bgfg(char **argv) {
     } else {
         pid = (int) strtol(argv[1], NULL, 10);
         if (pid == 0) {
-            printf("%s:argument must be a PID or %%jobid\n", cmd);
+            printf("argument must be a PID or %%jobid\n");
             fflush(stdout);
             return;
         }
@@ -338,7 +338,7 @@ void do_bgfg(char **argv) {
             waitfg(pid);
         }
     } else
-        printf("Job %d not found\n", pid);
+        printf("No such process\n");
 }
 
 /*
