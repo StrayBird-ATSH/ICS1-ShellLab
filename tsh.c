@@ -37,7 +37,7 @@
 
 /* Global variables */
 /*
- * A customized variable fg_stop_or_exit is defined here as a
+ * A customized variable flag is defined here as a
  * global variable. Meanwhile, it is declared as volatile sig_atomic_t,
  * whose usage is according to the GUIDELINES 4&5 in the Safe signal handling
  * subsection in section 8.5.5 of the textbook.
@@ -57,7 +57,7 @@ struct job_t {              /* The job struct */
     char cmdline[MAXLINE];  /* command line */
 };
 struct job_t jobs[MAXJOBS]; /* The job list */
-volatile sig_atomic_t fg_stop_or_exit;
+volatile sig_atomic_t flag;
 /* End global variables */
 
 
@@ -448,17 +448,16 @@ void do_bgfg(char **argv) {
  * waitfg - Block until process pid is no longer the foreground process
  */
 void waitfg(pid_t pid) {
-    //注意到，进来之间阻塞了SIGCHLD信号
+
+    /* There was mask in the do_bgfg function before entering this function,
+     * thus it is necessary to empty the masks. */
     sigset_t mask;
     sigemptyset(&mask);
-    //前台进程的pid和挂起标志
-    //FGPID = 0;
-    fg_stop_or_exit = 0;
-    //让SIGCHLD信号处理程序处理任何子进程传回来的SIGCHLD信号，注意子进程挂起或者终止都会返回这个信号，所以信号处理程序需要区分，处理不同的情况
-    //只有发出这个信号的子进程是前台进程才设置fg_stop_or_exit标志。
-    while (!fg_stop_or_exit) {
+
+    /* Continuously wait for the child foreground child process to stop.*/
+    flag = 0;
+    while (!flag)
         sigsuspend(&mask);
-    }
 }
 
 /*****************
@@ -486,7 +485,7 @@ void sigchld_handler(int sig) {
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         gc_job = getjobpid(jobs, gc_pid);
         if (gc_pid == fgpid(jobs)) {
-            fg_stop_or_exit = 1;
+            flag = 1;
         }
         if (WIFSTOPPED(status)) {
             //子进程停止引起的waitpid函数返回,再判断该进程是否是前台进程
@@ -553,7 +552,7 @@ void sigtstp_handler(int sig) {
 
     if (curr_fg_pid != 0) {
         /* 臃肿的代码，保留了我调试的过程。
-        fg_stop_or_exit = 1;
+        flag = 1;
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         struct job_t* stop_fgjob = getjobpid(jobs, curr_fg_pid);
         printf("Job [%d] (%d) stopped by signal 20\n", stop_fgjob->jid, stop_fgjob->pid);
