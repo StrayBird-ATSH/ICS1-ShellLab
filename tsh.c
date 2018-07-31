@@ -488,8 +488,6 @@ void sigchld_handler(int sig) {
     while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         requestedJob = getjobpid(jobs, pid);
-        if (pid == fgpid(jobs))
-            flag = 1;
         if (WIFSTOPPED(status)) {
 
             /* The child process is stopped. */
@@ -506,6 +504,8 @@ void sigchld_handler(int sig) {
                        requestedJob->jid, requestedJob->pid, WTERMSIG(status));
             deletejob(jobs, pid);
         }
+        if (pid == fgpid(jobs))
+            flag = 1;
         fflush(stdout);
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
     }
