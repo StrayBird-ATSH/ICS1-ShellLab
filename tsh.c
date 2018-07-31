@@ -249,7 +249,7 @@ void eval(char *cmdline) {
             sigprocmask(SIG_BLOCK, &mask_all, NULL);
             struct job_t *currentBgProcess = getjobpid(jobs, pid);
             printf("[%d] (%d) %s", currentBgProcess->jid,
-                    currentBgProcess->pid, currentBgProcess->cmdline);
+                   currentBgProcess->pid, currentBgProcess->cmdline);
         }
 
         /* Remove the blocks*/
@@ -520,6 +520,11 @@ void sigchld_handler(int sig) {
  *    to the foreground job.
  */
 void sigint_handler(int sig) {
+
+    /*
+     * More of the work is done in the sigchldHandler. Therefore,
+     * there is not much work to do here.
+     * */
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
     pid_t pid;
@@ -543,6 +548,11 @@ void sigint_handler(int sig) {
  *     foreground job by sending it a SIGTSTP.
  */
 void sigtstp_handler(int sig) {
+
+    /*
+     * More of the work is done in the sigchldHandler. Therefore,
+     * there is not much work to do here.
+     * */
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
     pid_t pid;
