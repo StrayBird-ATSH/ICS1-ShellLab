@@ -543,25 +543,17 @@ void sigint_handler(int sig) {
 void sigtstp_handler(int sig) {
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
-    pid_t curr_fg_pid;
+    pid_t pid;
 
     sigfillset(&mask_all);
 
+    /* Block the signal while reading global variables. */
     sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-    curr_fg_pid = fgpid(jobs);
+    pid = fgpid(jobs);
     sigprocmask(SIG_SETMASK, &mask_prev, NULL);
 
-    if (curr_fg_pid != 0) {
-        /* 臃肿的代码，保留了我调试的过程。
-        flag = 1;
-        sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-        struct job_t* stop_fgjob = getjobpid(jobs, curr_fg_pid);
-        printf("Job [%d] (%d) stopped by signal 20\n", stop_fgjob->jid, stop_fgjob->pid);
-        stop_fgjob->state = ST;
-        sigprocmask(SIG_SETMASK, &mask_prev, NULL);
-        */
-        kill(-curr_fg_pid, SIGTSTP);
-    }
+    if (pid > 0)
+        kill(-pid, SIGTSTP);
 
     errno = olderrno;
 }
