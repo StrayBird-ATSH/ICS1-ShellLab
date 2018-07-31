@@ -315,20 +315,19 @@ int parseline(const char *cmdline, char **argv) {
  *    it immediately.
  */
 int builtin_cmd(char **argv) {
-    //初始化变量以及阻塞集合
-    char *cmd = argv[0];
-    sigset_t mask_all, mask_prev;
 
+    /* Mask initialization */
+    sigset_t mask_all, mask_prev;
     sigfillset(&mask_all);
 
-    if (!strcmp(cmd, "quit")) {
-        //直接退出，这里可以考虑更加完善些，比如如果当前任务列表中还有没运行完成的，给列表中所有的进程组，发送9信号，kill掉。
+    if (!strcmp(argv[0], "quit")) /* quit command */
         exit(0);
-    } else if (strcmp(cmd, "fg") == 0 || strcmp(argv[0], "bg") == 0) {
+    else if (strcmp(argv[0], "fg") == 0 || strcmp(argv[0], "bg") == 0) {
         do_bgfg(argv);
         return 1;
-    } else if (!strcmp(cmd, "jobs")) {
-        //访问全局变量，需要阻塞全部信号
+    } else if (!strcmp(argv[0], "jobs")) {
+
+        /* Block signal before reading global variables*/
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
         listjobs(jobs);
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
@@ -371,33 +370,35 @@ void do_bgfg(char **argv) {
                 return;
             }
         }
+
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-        if ((requestedJob = getjobpid(jobs, pid)) != NULL) {
+        if ((requestedJob = getjobpid(jobs, pid)) != NULL)
             switch (requestedJob->state) {
                 case ST:
-                    //bg命令，改变该任务的运行状态，ST->BG，同时发送信号给对应的子进程
+                    /* Change the state in the job list and send the signal to
+                     * the child process. */
                     requestedJob->state = BG;
                     kill(-(requestedJob->pid), SIGCONT);
                     printf("[%d] (%d) %s", requestedJob->jid, requestedJob->pid, requestedJob->cmdline);
                     break;
                 case BG:
-                    //如果该任务已经是后台运行了，就啥也不干
+                    /* Ignore the command if the child process is already in BG */
                     break;
-                    //如果bg前台或者unfef，那么肯定哪里出错了
-                case UNDEF:
-                case FG:
-                    unix_error("bg 出现undef或者FG的进程\n");
-                    break;
+                default:
+                    unix_error("bg process error\n");
             }
-        } else
+        else
             printf("(%d): No such process\n", pid);
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
+
     } else {
+
         /* ignore command if no argument */
         if (argv[1] == NULL) {
             printf("fg command requires PID or %%jobid argument\n");
             return;
         }
+
         if (argv[1][0] == '%') {
             jid = (int) strtol(&(argv[1][1]), NULL, 10);
             if (jid == 0) {
@@ -418,29 +419,28 @@ void do_bgfg(char **argv) {
                 return;
             }
         }
+
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-        if ((requestedJob = getjobpid(jobs, pid)) != NULL) {
+        if ((requestedJob = getjobpid(jobs, pid)) != NULL)
             switch (requestedJob->state) {
-                //如果fg挂起的进程，那么重启它，并且挂起主进程等待它回收终止。
+                /* Continue the process if it is in stop mode. */
                 case ST:
                     requestedJob->state = FG;
                     kill(-(requestedJob->pid), SIGCONT);
                     waitfg(requestedJob->pid);
                     break;
-                    //如果fg后台进程，那么将它的状态转为前台进程，然后等待它终止
+                    /* Bring the process to foreground if the process is in BG */
                 case BG:
                     requestedJob->state = FG;
                     waitfg(requestedJob->pid);
                     break;
-                    //如果本省就是前台进程，那么出错了 。
-                case FG:
-                case UNDEF:
-                    unix_error("fg 出现undef或者FG的进程\n");
-                    break;
+                default:
+                    unix_error("fg process error\n");
             }
-        } else
+        else
             printf("(%d): No such process\n", pid);
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
+
     }
 }
 
