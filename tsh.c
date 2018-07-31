@@ -454,7 +454,9 @@ void waitfg(pid_t pid) {
     sigset_t mask;
     sigemptyset(&mask);
 
-    /* Continuously wait for the child foreground child process to stop.*/
+    /* Continuously wait for the child foreground child process to stop.
+     * The method sigSuspend is introduced in the section 8.5.7 of the
+     * textbook.*/
     flag = 0;
     while (!flag)
         sigsuspend(&mask);
@@ -473,45 +475,43 @@ void waitfg(pid_t pid) {
  */
 void sigchld_handler(int sig) {
     int olderrno = errno;
-    sigset_t mask_all, mask_prev;
-    pid_t gc_pid;
-    struct job_t *gc_job;
+    struct job_t *requestedJob;
     int status;
+    sigset_t mask_all, mask_prev;
+    pid_t pid;
 
     sigfillset(&mask_all);
-    //尽可能的回收子进程,同时使用WNOHANG选项使得如果当前进程都没有终止时，直接返回，而不是挂起该回收进程。这样可能会阻碍无法两个短时间结束的后台进程
-    //即trace05.txt
-    while ((gc_pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
+
+    /* Try to reap all the child processes. */
+    while ((pid = waitpid(-1, &status, WNOHANG | WUNTRACED)) > 0) {
         sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-        gc_job = getjobpid(jobs, gc_pid);
-        if (gc_pid == fgpid(jobs)) {
+        requestedJob = getjobpid(jobs, pid);
+        if (pid == fgpid(jobs))
             flag = 1;
-        }
         if (WIFSTOPPED(status)) {
-            //子进程停止引起的waitpid函数返回,再判断该进程是否是前台进程
-            //struct job_t* stop_job = getjobpid(jobs, gc_pid);
-            gc_job->state = ST;
-            printf("Job [%d] (%d) stopped by signal %d\n", gc_job->jid, gc_job->pid, WSTOPSIG(status));
+
+            /* The child process is stopped. */
+            requestedJob->state = ST;
+            printf("Job [%d] (%d) stopped by signal %d\n",
+                   requestedJob->jid, requestedJob->pid, WSTOPSIG(status));
         } else {
-            //子进程终止引起的返回,判断是否是前台进程
-            //并且判断该信号是否是未捕获的信号
-            if (WIFSIGNALED(status)) {
-                //struct job_t* gc_job = getjobpid(jobs, gc_pid);
-                printf("Job [%d] (%d) terminated by signal %d\n", gc_job->jid, gc_job->pid, WTERMSIG(status));
-            }
-            //终止的进程直接回收
-            deletejob(jobs, gc_pid);
+
+            /* The child process is terminated.
+             * Then determine whether the signal leading to the termination is
+             * caught or not. */
+            if (WIFSIGNALED(status))
+                printf("Job [%d] (%d) terminated by signal %d\n",
+                       requestedJob->jid, requestedJob->pid, WTERMSIG(status));
+            deletejob(jobs, pid);
         }
         fflush(stdout);
         sigprocmask(SIG_SETMASK, &mask_prev, NULL);
     }
+
+    /* Restore the error number*/
     errno = olderrno;
 }
-/*
- * sigint_handler - The kernel sends a SIGINT to the shell whenver the
- *    user types ctrl-c at the keyboard.  Catch it and send it along
- *    to the foreground job.
- */
+
 /*
  * sigint_handler - The kernel sends a SIGINT to the shell whenver the
  *    user types ctrl-c at the keyboard.  Catch it and send it along
@@ -520,17 +520,18 @@ void sigchld_handler(int sig) {
 void sigint_handler(int sig) {
     int olderrno = errno;
     sigset_t mask_all, mask_prev;
-    pid_t curr_fg_pid;
+    pid_t pid;
 
     sigfillset(&mask_all);
-    //访问全局结构体数组，阻塞信号
+
+    /* Block the signal while reading global variables. */
     sigprocmask(SIG_BLOCK, &mask_all, &mask_prev);
-    curr_fg_pid = fgpid(jobs);
+    pid = fgpid(jobs);
     sigprocmask(SIG_SETMASK, &mask_prev, NULL);
 
-    if (curr_fg_pid != 0) {
-        kill(-curr_fg_pid, SIGINT);
-    }
+    if (pid > 0)
+        kill(-pid, SIGINT);
+
     errno = olderrno;
 }
 
