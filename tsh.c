@@ -36,6 +36,14 @@
  */
 
 /* Global variables */
+/*
+ * A customized variable fg_stop_or_exit is defined here as a
+ * global variable. Meanwhile, it is declared as volatile sig_atomic_t,
+ * whose usage is according to the GUIDELINES 4&5 in the Safe signal handling
+ * subsection in section 8.5.5 of the textbook.
+ * The use of this variable is to determine whether the signal that caused the stopping
+ * is a foreground process or not and this variable is used in sigchld_handler function.
+ * */
 extern char **environ;      /* defined in libc */
 char prompt[] = "tsh> ";    /* command line prompt (DO NOT CHANGE) */
 int verbose = 0;            /* if true, print additional output */
@@ -51,6 +59,7 @@ struct job_t {              /* The job struct */
 struct job_t jobs[MAXJOBS]; /* The job list */
 //用于void sigchld_handler中，判断是否是当前引起停止信号的是否是前台进程，
 //这种标志的作法，借鉴了书中P546页的做法
+
 volatile sig_atomic_t fg_stop_or_exit;
 /* End global variables */
 
