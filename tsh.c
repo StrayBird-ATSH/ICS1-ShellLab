@@ -57,9 +57,6 @@ struct job_t {              /* The job struct */
     char cmdline[MAXLINE];  /* command line */
 };
 struct job_t jobs[MAXJOBS]; /* The job list */
-//用于void sigchld_handler中，判断是否是当前引起停止信号的是否是前台进程，
-//这种标志的作法，借鉴了书中P546页的做法
-
 volatile sig_atomic_t fg_stop_or_exit;
 /* End global variables */
 
