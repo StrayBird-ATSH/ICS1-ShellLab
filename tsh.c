@@ -248,7 +248,8 @@ void eval(char *cmdline) {
             /* Print the info of background tasks*/
             sigprocmask(SIG_BLOCK, &mask_all, NULL);
             struct job_t *currentBgProcess = getjobpid(jobs, pid);
-            printf("[%d] (%d) %s", currentBgProcess->jid, currentBgProcess->pid, currentBgProcess->cmdline);
+            printf("[%d] (%d) %s", currentBgProcess->jid,
+                    currentBgProcess->pid, currentBgProcess->cmdline);
         }
 
         /* Remove the blocks*/
@@ -344,6 +345,7 @@ void do_bgfg(char **argv) {
     struct job_t *requestedJob;
     char *cmd = argv[0];
     sigset_t mask_all, mask_prev;
+
     if (!strcmp(cmd, "bg")) {
         /* ignore command if no argument */
         if (argv[1] == NULL) {
